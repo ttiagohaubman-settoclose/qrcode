@@ -227,10 +227,17 @@
   async function uploadFile(file){
     const b64 = await toBase64(file);
     const payload = JSON.stringify({ name:file.name, mimeType:file.type||'application/octet-stream', data:b64 });
-    // text/plain evita el preflight de CORS; Apps Script lee e.postData.contents
-    const res = await fetch(SCRIPT_URL, { method:'POST', body:payload });
-    const j = await res.json();
-    if(!j.ok) throw new Error(j.error||'error');
+    let res;
+    try{
+      res = await fetch(SCRIPT_URL, { method:'POST', redirect:'follow', body:payload });
+    }catch(e){
+      throw new Error('conexión/CORS — '+e.message);
+    }
+    const text = await res.text();
+    let j;
+    try{ j = JSON.parse(text); }
+    catch(e){ throw new Error('respuesta no válida ('+res.status+') — '+text.slice(0,80).replace(/\s+/g,' ')); }
+    if(!j.ok) throw new Error(j.error || 'error del script');
     return true;
   }
 
@@ -241,21 +248,22 @@
     $('fileList').querySelector('.upload-btn').setAttribute('disabled','');
     document.querySelectorAll('.rm').forEach(b=>b.style.display='none');
     $('bar').classList.add('show'); $('ptxt').classList.add('show');
-    let ok=0, fail=0;
+    let ok=0, fail=0, lastErr='';
     for(let i=0;i<files.length;i++){
       const st=$('st'+i); if(st){st.textContent='subiendo…';}
       $('ptxt').textContent='Subiendo '+(i+1)+' de '+files.length+'…';
       $('barFill').style.width = Math.round((i)/files.length*100)+'%';
       try{ await uploadFile(files[i]); ok++; if(st){st.textContent='✓'; st.className='st ok';} }
-      catch(e){ fail++; if(st){st.textContent='falló'; st.className='st err';} }
+      catch(e){ fail++; lastErr=e.message; if(st){st.textContent='falló'; st.className='st err';} }
     }
     $('barFill').style.width='100%';
     $('ptxt').classList.remove('show');
     $('bar').classList.remove('show');
     $('fileList').classList.remove('show');
-    let msg = ok>0 ? ('Subiste '+ok+(ok>1?' recuerdos':' recuerdo')+'. ¡Gracias por compartir! 💛') : 'No pudimos subir los archivos. Intenta de nuevo con buena conexión.';
+    let msg = ok>0 ? ('Subiste '+ok+(ok>1?' recuerdos':' recuerdo')+'. ¡Gracias por compartir! 💛') : 'No pudimos subir los archivos.';
     if(fail>0 && ok>0) msg += ' ('+fail+' no se pudieron subir.)';
     $('doneMsg').textContent = msg;
+    if(fail>0 && lastErr){ $('cfgErr').textContent = 'Detalle: '+lastErr; $('cfgErr').classList.add('show'); }
     $('done').classList.add('show');
   };
 
